@@ -1,6 +1,7 @@
+import uuid
+
 from django.conf import settings
 from django.db import models
-import uuid
 
 
 class Appointment(models.Model):
@@ -9,6 +10,7 @@ class Appointment(models.Model):
         ("COMPLETED", "Completed"),
         ("CANCELLED", "Cancelled"),
     ]
+
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     patient = models.ForeignKey(
         settings.AUTH_USER_MODEL,
@@ -20,25 +22,48 @@ class Appointment(models.Model):
         related_name="appointments_professional",
         on_delete=models.SET_NULL,
         null=True,
+        blank=True,
     )
-    title = models.CharField(max_length=200, default="Cita médica")
+    title = models.CharField(max_length=200, default="Cita medica")
     start = models.DateTimeField()
     end = models.DateTimeField()
-    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="SCHEDULED")
+    status = models.CharField(
+        max_length=20, choices=STATUS_CHOICES, default="SCHEDULED"
+    )
     notes = models.TextField(blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
 
-class PatientActivity(models.Model):
-    ACTIVITY_TYPES = [
-        ("APPOINTMENT", "Cita médica"),
-        ("MEDICATION", "Medicamento"),
-        ("THERAPY", "Terapia"),
-    ]
+class CalendarOption(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    name = models.CharField(max_length=120)
+    slug = models.SlugField(max_length=120, unique=True)
+    description = models.CharField(max_length=255, blank=True)
+    color = models.CharField(max_length=7, default="#2563eb")
+    is_active = models.BooleanField(default=True)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        related_name="calendar_options_created",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
 
+    class Meta:
+        ordering = ["name"]
+
+    def __str__(self) -> str:
+        return self.name
+
+
+class PatientActivity(models.Model):
     RECURRENCE_CHOICES = [
         ("NONE", "Una vez"),
         ("DAILY", "Diaria"),
+        ("WEEKLY", "Semanal"),
+        ("MONTHLY", "Mensual"),
     ]
 
     STATUS_CHOICES = [
@@ -55,16 +80,34 @@ class PatientActivity(models.Model):
     medic = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         related_name="activities_medic",
-        on_delete=models.CASCADE,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
     )
     assigned_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         related_name="activities_assigned",
-        on_delete=models.CASCADE,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+    )
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        related_name="activities_created",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+    )
+    calendar_option = models.ForeignKey(
+        CalendarOption,
+        related_name="activities",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
     )
     title = models.CharField(max_length=200)
     description = models.TextField(blank=True)
-    activity_type = models.CharField(max_length=20, choices=ACTIVITY_TYPES)
+    activity_type = models.CharField(max_length=40)
     start_time = models.DateTimeField()
     end_time = models.DateTimeField(blank=True, null=True)
     recurrence = models.CharField(
@@ -75,8 +118,34 @@ class PatientActivity(models.Model):
     status = models.CharField(
         max_length=10, choices=STATUS_CHOICES, default="PENDING"
     )
+    is_personal = models.BooleanField(default=False)
     completed_at = models.DateTimeField(blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
         ordering = ["start_time"]
+
+
+class PatientActivityCompletion(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    activity = models.ForeignKey(
+        PatientActivity,
+        related_name="completions",
+        on_delete=models.CASCADE,
+    )
+    occurrence_date = models.DateField()
+    completed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        related_name="activity_completions",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+    )
+    completed_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-occurrence_date", "-completed_at"]
+        unique_together = ("activity", "occurrence_date")
+
+    def __str__(self) -> str:
+        return f"{self.activity.title} - {self.occurrence_date}"

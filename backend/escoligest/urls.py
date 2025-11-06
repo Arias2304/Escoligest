@@ -8,6 +8,7 @@ urlpatterns = [
     path("api/auth/", include("coreusers.urls")),
     path("api/appointments/", include("appointments.urls")),
     path("api/messaging/", include("messaging.urls")),
+    path("api/articles/", include("articles.urls")),
 ]
 
 if settings.DEBUG:
