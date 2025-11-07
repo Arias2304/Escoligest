@@ -1,5 +1,6 @@
 from django.contrib.auth.password_validation import validate_password
 from rest_framework import serializers
+from rest_framework.validators import UniqueValidator
 
 from .models import PatientAssignment, User
 
@@ -71,6 +72,15 @@ class RegisterSerializer(serializers.ModelSerializer):
         required=False, choices=User.SCOLIOSIS_CONDITIONS, allow_blank=True
     )
     specialty = serializers.CharField(required=False, allow_blank=True, max_length=150)
+    email = serializers.EmailField(
+        required=True,
+        validators=[
+            UniqueValidator(
+                queryset=User.objects.all(),
+                message="Ya existe una cuenta registrada con este correo electronico.",
+            )
+        ],
+    )
 
     class Meta:
         model = User
