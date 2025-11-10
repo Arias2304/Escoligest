@@ -1,12 +1,19 @@
+import json
+
+from django.conf import settings
+from django.contrib.auth.tokens import PasswordResetTokenGenerator
+from django.core.mail import send_mail
 from django.db.models import Count
+from django.http import JsonResponse
 from django.shortcuts import get_object_or_404
+from django.utils.encoding import force_bytes, force_str
+from django.utils.http import urlsafe_base64_decode, urlsafe_base64_encode
+from oauth2_provider.models import AccessToken
+from oauth2_provider.views import TokenView
 from rest_framework import generics, permissions, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
-from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
-from rest_framework_simplejwt.views import TokenObtainPairView
-from rest_framework_simplejwt.tokens import RefreshToken
 
 from .models import PatientAssignment, User
 from .permissions import IsAdminUserRole
@@ -14,6 +21,8 @@ from .serializers import (
     AdminUserSerializer,
     AssignmentActionSerializer,
     AssignmentSerializer,
+    PasswordResetConfirmSerializer,
+    PasswordResetRequestSerializer,
     RegisterSerializer,
     UserSerializer,
 )
@@ -33,25 +42,109 @@ class MeView(generics.RetrieveUpdateAPIView):
         return self.request.user
 
 
-class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
-    @classmethod
-    def get_token(cls, user):
-        token = super().get_token(user)
-        token["user_id"] = str(user.id)
-        token["username"] = user.username
-        token["role"] = user.role
-        token["full_name"] = user.full_name
-        token["email"] = user.email
-        return token
+class UserAwareTokenView(TokenView):
+    """
+    Extends the default token endpoint to include serialized user info
+    so the SPA can bootstrap the session without making an extra call.
+    """
 
-    def validate(self, attrs):
-        data = super().validate(attrs)
-        data["user"] = UserSerializer(self.user).data
-        return data
+    def post(self, request, *args, **kwargs):
+        uri, headers, body, status_code = self.create_token_response(request)
+        data = {}
+        if body:
+            try:
+                data = json.loads(body)
+            except ValueError:
+                data = {}
+
+        access_token_value = data.get("access_token")
+        if status_code == 200 and access_token_value:
+            try:
+                access_token = AccessToken.objects.select_related("user").get(
+                    token=access_token_value
+                )
+                data["user"] = UserSerializer(access_token.user).data
+            except AccessToken.DoesNotExist:
+                pass
+
+        json_response = JsonResponse(data, status=status_code)
+        for k, v in headers.items():
+            json_response[k] = v
+        return json_response
 
 
-class CustomTokenObtainPairView(TokenObtainPairView):
-    serializer_class = CustomTokenObtainPairSerializer
+class PasswordResetRequestView(generics.GenericAPIView):
+    serializer_class = PasswordResetRequestSerializer
+    permission_classes = (permissions.AllowAny,)
+
+    def post(self, request):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        email = serializer.validated_data["email"]
+        user = User.objects.filter(email=email).first()
+
+        if user:
+            token_generator = PasswordResetTokenGenerator()
+            token = token_generator.make_token(user)
+            uid = urlsafe_base64_encode(force_bytes(user.pk))
+            reset_url = (
+                f"{settings.FRONTEND_URL}/password-reset/confirm?uid={uid}&token={token}"
+            )
+            message = (
+                "Hola,\n\n"
+                "Recibimos una solicitud para restablecer tu contraseña en Escoligest.\n"
+                f"Visita el siguiente enlace para continuar: {reset_url}\n\n"
+                "Si no solicitaste este cambio, puedes ignorar este mensaje."
+            )
+            send_mail(
+                subject="Recupera tu contraseña",
+                message=message,
+                from_email=settings.DEFAULT_FROM_EMAIL,
+                recipient_list=[email],
+                fail_silently=True,
+            )
+
+        return Response(
+            {
+                "detail": (
+                    "Si el correo está registrado, enviaremos instrucciones "
+                    "para restablecer la contraseña."
+                )
+            }
+        )
+
+
+class PasswordResetConfirmView(generics.GenericAPIView):
+    serializer_class = PasswordResetConfirmSerializer
+    permission_classes = (permissions.AllowAny,)
+
+    def post(self, request):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        uid = serializer.validated_data["uid"]
+        token = serializer.validated_data["token"]
+        new_password = serializer.validated_data["new_password"]
+
+        try:
+            user_id = force_str(urlsafe_base64_decode(uid))
+            user = User.objects.get(pk=user_id)
+        except (User.DoesNotExist, ValueError, TypeError, OverflowError):
+            return Response(
+                {"detail": "El enlace de recuperación no es válido."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        token_generator = PasswordResetTokenGenerator()
+        if not token_generator.check_token(user, token):
+            return Response(
+                {"detail": "El enlace de recuperación no es válido o expiró."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        user.set_password(new_password)
+        user.save(update_fields=["password"])
+        return Response({"detail": "La contraseña se actualizó correctamente."})
 
 
 class AdminUserViewSet(viewsets.ModelViewSet):

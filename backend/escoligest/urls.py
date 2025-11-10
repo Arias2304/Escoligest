@@ -5,6 +5,7 @@ from django.urls import include, path
 
 urlpatterns = [
     path("admin/", admin.site.urls),
+    path("o/", include("oauth2_provider.urls", namespace="oauth2_provider")),
     path("api/auth/", include("coreusers.urls")),
     path("api/appointments/", include("appointments.urls")),
     path("api/messaging/", include("messaging.urls")),

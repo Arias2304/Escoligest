@@ -1,6 +1,10 @@
 import os
 from pathlib import Path
 
+
+def env_bool(var_name, default="false"):
+    return os.getenv(var_name, default).strip().lower() in ("1", "true", "yes")
+
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 SECRET_KEY = "dev-secret-key-change-me"
@@ -17,6 +21,7 @@ INSTALLED_APPS = [
     "django.contrib.staticfiles",
 
     "rest_framework",
+    "oauth2_provider",
 
     "articles",
     "coreusers",
@@ -30,11 +35,12 @@ CORS_ALLOW_ALL_ORIGINS = True
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
+    "corsheaders.middleware.CorsMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
+    "oauth2_provider.middleware.OAuth2TokenMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
-    'corsheaders.middleware.CorsMiddleware',
 ]
 
 ROOT_URLCONF = "escoligest.urls"
@@ -79,12 +85,33 @@ MEDIA_ROOT = BASE_DIR / "media"
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
-# DRF + JWT
+# DRF + OAuth2
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": (
-        "rest_framework_simplejwt.authentication.JWTAuthentication",
+        "oauth2_provider.contrib.rest_framework.OAuth2Authentication",
+        "rest_framework.authentication.SessionAuthentication",
     ),
     "DEFAULT_PERMISSION_CLASSES": ("rest_framework.permissions.IsAuthenticated",),
 }
 
 AUTH_USER_MODEL = "coreusers.User"
+
+OAUTH2_PROVIDER = {
+    "ACCESS_TOKEN_EXPIRE_SECONDS": 60 * 60,
+    "REFRESH_TOKEN_EXPIRE_SECONDS": 60 * 60 * 24 * 7,
+    "SCOPES": {"read": "Lectura de datos", "write": "Escritura de datos"},
+    "RESOURCE_SERVER_INTROSPECTION_URL": "",
+}
+
+EMAIL_BACKEND = os.getenv(
+    "EMAIL_BACKEND", "django.core.mail.backends.console.EmailBackend"
+)
+EMAIL_HOST = os.getenv("EMAIL_HOST", "smtp.sendgrid.net")
+EMAIL_PORT = int(os.getenv("EMAIL_PORT", "587"))
+EMAIL_HOST_USER = os.getenv("EMAIL_HOST_USER", "apikey")
+EMAIL_HOST_PASSWORD = os.getenv("EMAIL_HOST_PASSWORD", "")
+EMAIL_USE_TLS = env_bool("EMAIL_USE_TLS", "true")
+EMAIL_USE_SSL = env_bool("EMAIL_USE_SSL", "false")
+DEFAULT_FROM_EMAIL = os.getenv("DEFAULT_FROM_EMAIL", "no-reply@escoligest.local")
+
+FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:4200")
