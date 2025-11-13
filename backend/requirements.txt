@@ -5,3 +5,4 @@ python-dotenv==1.0.0
 django-cors-headers
 Pillow==10.4.0
 django-oauth-toolkit==2.3.0
+fpdf2==2.7.9

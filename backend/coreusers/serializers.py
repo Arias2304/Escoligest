@@ -60,6 +60,11 @@ class AdminUserSerializer(UserSerializer):
 
 
 class RegisterSerializer(serializers.ModelSerializer):
+    role = serializers.ChoiceField(
+        choices=[("PATIENT", "Paciente"), ("MEDIC", "Medico")],
+        default="PATIENT",
+        required=False,
+    )
     password = serializers.CharField(
         write_only=True, required=True, validators=[validate_password]
     )
@@ -96,8 +101,17 @@ class RegisterSerializer(serializers.ModelSerializer):
             "specialty",
         )
 
+    def validate_role(self, value):
+        if value not in ("PATIENT", "MEDIC"):
+            raise serializers.ValidationError(
+                "No puedes registrar un usuario con ese rol."
+            )
+        return value
+
     def create(self, validated_data):
         password = validated_data.pop("password")
+        role = validated_data.get("role") or "PATIENT"
+        validated_data["role"] = role
         user = User(**validated_data)
         user.set_password(password)
         user.save()
