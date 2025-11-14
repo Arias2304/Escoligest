@@ -243,3 +243,36 @@ class PatientActivitySerializer(serializers.ModelSerializer):
             occurrence.strftime("%Y-%m-%d")
             for occurrence in obj.completions.values_list("occurrence_date", flat=True)
         ]
+
+
+class PatientReminderSerializer(serializers.ModelSerializer):
+    medic_name = serializers.SerializerMethodField()
+    calendar_label = serializers.SerializerMethodField()
+    calendar_color = serializers.SerializerMethodField()
+
+    class Meta:
+        model = PatientActivity
+        fields = [
+            "id",
+            "title",
+            "description",
+            "start_time",
+            "medic_name",
+            "calendar_label",
+            "calendar_color",
+        ]
+
+    def get_medic_name(self, obj):
+        if obj.medic:
+            return obj.medic.full_name or obj.medic.username
+        return None
+
+    def get_calendar_label(self, obj):
+        if obj.calendar_option:
+            return obj.calendar_option.name
+        return None
+
+    def get_calendar_color(self, obj):
+        if obj.calendar_option:
+            return obj.calendar_option.color
+        return None

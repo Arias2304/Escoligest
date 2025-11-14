@@ -1,4 +1,5 @@
 import json
+import logging
 
 from django.conf import settings
 from django.contrib.auth.tokens import PasswordResetTokenGenerator
@@ -73,6 +74,9 @@ class UserAwareTokenView(TokenView):
         return json_response
 
 
+logger = logging.getLogger(__name__)
+
+
 class PasswordResetRequestView(generics.GenericAPIView):
     serializer_class = PasswordResetRequestSerializer
     permission_classes = (permissions.AllowAny,)
@@ -96,13 +100,27 @@ class PasswordResetRequestView(generics.GenericAPIView):
                 f"Visita el siguiente enlace para continuar: {reset_url}\n\n"
                 "Si no solicitaste este cambio, puedes ignorar este mensaje."
             )
-            send_mail(
-                subject="Recupera tu contraseña",
-                message=message,
-                from_email=settings.DEFAULT_FROM_EMAIL,
-                recipient_list=[email],
-                fail_silently=True,
-            )
+            try:
+                send_mail(
+                    subject="Recupera tu contraseña",
+                    message=message,
+                    from_email=settings.DEFAULT_FROM_EMAIL,
+                    recipient_list=[email],
+                    fail_silently=False,
+                )
+            except Exception:
+                logger.exception(
+                    "No se pudo enviar el correo de restablecimiento para %s", email
+                )
+                return Response(
+                    {
+                        "detail": (
+                            "No pudimos enviar las instrucciones. Revisa la "
+                            "configuración de correo y vuelve a intentarlo."
+                        )
+                    },
+                    status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                )
 
         return Response(
             {

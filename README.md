@@ -20,10 +20,27 @@ Pasos:
    - Password reset confirm: POST http://localhost:8000/api/auth/password-reset/confirm/
    - Appointments: http://localhost:8000/api/appointments/
 
+## Enviar correos reales con SMTP personal (Gmail/Outlook)
+
+1. Activa la verificación en dos pasos de tu cuenta y genera una *contraseña de aplicación* (Gmail: `Security > App passwords`, Outlook: `Security > Advanced security options > App passwords`).
+2. Copia `.env.example` a `.env` y completa los datos de tu buzón:
+   ```bash
+   EMAIL_BACKEND=django.core.mail.backends.smtp.EmailBackend
+   EMAIL_HOST=smtp.gmail.com          # o smtp.office365.com para Outlook/Hotmail
+   EMAIL_PORT=587
+   EMAIL_HOST_USER=tu_correo@gmail.com
+   EMAIL_HOST_PASSWORD=<CONTRASENA_DE_APLICACION>
+   EMAIL_USE_TLS=True
+   EMAIL_USE_SSL=False
+   DEFAULT_FROM_EMAIL=soporte@escoligest.local
+   ```
+3. Levanta los servicios con `docker compose up --build`. El contenedor `backend` leerá automáticamente las variables y enviará los correos de recuperación gratis a través de tu cuenta personal (respetando los límites diarios del proveedor).
+4. Ejecuta el flujo “¿Olvidaste tu contraseña?” desde el frontend para validar que llega el correo con el enlace.
+
 ## Enviar correos reales con SendGrid
 
 1. Crea una API Key en [SendGrid](https://app.sendgrid.com/settings/api_keys) con permisos “Full Access”.
-2. Copia el archivo `.env.example` (o crea uno nuevo en la raíz del repo) y define:
+2. Configura tu `.env` con los valores de SendGrid:
    ```bash
    EMAIL_BACKEND=django.core.mail.backends.smtp.EmailBackend
    EMAIL_HOST=smtp.sendgrid.net
@@ -34,7 +51,13 @@ Pasos:
    EMAIL_USE_SSL=False
    DEFAULT_FROM_EMAIL=soporte@escoligest.local
    ```
-3. Exporta esas variables en tu shell (si corres `manage.py` directo) o simplemente ejecuta `docker compose up --build`, porque `docker-compose.yml` ya reenvía dichas variables al contenedor `backend`.
-4. Usa el flujo de “Recuperar contraseña” desde el frontend; los correos saldrán usando la API Key configurada.
+3. Levanta el stack o reinicia el contenedor backend para aplicar los cambios.
+4. Usa el flujo de “Recuperar contraseña”; los correos saldrán vía SendGrid.
 
 > Si necesitas un entorno de pruebas sin enviar correos reales, deja `EMAIL_BACKEND` con el valor por defecto (`django.core.mail.backends.console.EmailBackend`). De esa forma los mensajes solo se imprimen en la consola del backend.
+
+## Recordatorios dentro de la aplicación
+
+- Cada paciente ve una campana en el encabezado de su panel. Allí se listan todas las actividades pendientes que comienzan en los próximos 10 minutos; ese tiempo es fijo para todo el sistema.
+- El backend expone automáticamente esas actividades y el frontend las consulta cada minuto, así que no necesitas programar comandos ni cron jobs adicionales.
+- Los correos electrónicos solo se usan para la recuperación de contraseñas; los recordatorios regulares viven completamente dentro de la app.

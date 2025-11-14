@@ -6,7 +6,7 @@ from uuid import UUID
 from django.http import HttpResponse
 from django.utils import timezone
 from django.utils.text import slugify
-from rest_framework import permissions, status, viewsets
+from rest_framework import generics, permissions, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import NotFound, PermissionDenied, ValidationError
 from rest_framework.response import Response
@@ -24,7 +24,10 @@ from .serializers import (
     AppointmentSerializer,
     CalendarOptionSerializer,
     PatientActivitySerializer,
+    PatientReminderSerializer,
 )
+
+REMINDER_WINDOW_MINUTES = 10
 
 
 class IsOwnerOrMedical(permissions.BasePermission):
@@ -89,6 +92,40 @@ class PatientActivityViewSet(viewsets.ModelViewSet):
         if user.role == "PATIENT":
             return base.filter(patient=user)
         return base.none()
+
+    @action(
+        detail=False,
+        methods=["get"],
+        url_path="pending-reminders",
+        permission_classes=[permissions.IsAuthenticated],
+    )
+    def pending_reminders(self, request):
+        user = request.user
+        if user.role != "PATIENT":
+            raise PermissionDenied("Solo los pacientes pueden ver sus recordatorios.")
+
+        minutes = REMINDER_WINDOW_MINUTES
+        now = timezone.now()
+        upper_bound = now + timedelta(minutes=minutes)
+
+        activities = (
+            PatientActivity.objects.select_related("calendar_option", "medic")
+            .filter(
+                patient=user,
+                status="PENDING",
+                start_time__gt=now,
+                start_time__lte=upper_bound,
+            )
+            .order_by("start_time")
+        )
+        serializer = PatientReminderSerializer(activities, many=True)
+        return Response(
+            {
+                "minutes_before": minutes,
+                "count": len(serializer.data),
+                "activities": serializer.data,
+            }
+        )
 
     def perform_create(self, serializer):
         user = self.request.user
@@ -621,7 +658,11 @@ class PatientActivityViewSet(viewsets.ModelViewSet):
             return (37, 99, 235)
 
     def _occurs_on_date(self, activity: PatientActivity, target_date: date) -> bool:
-        start_date = activity.start_time.date()
+        start_time = activity.start_time
+        if timezone.is_aware(start_time):
+            start_date = timezone.localtime(start_time).date()
+        else:
+            start_date = start_time.date()
         if target_date < start_date:
             return False
 

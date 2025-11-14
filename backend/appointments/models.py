@@ -120,6 +120,7 @@ class PatientActivity(models.Model):
     )
     is_personal = models.BooleanField(default=False)
     completed_at = models.DateTimeField(blank=True, null=True)
+    reminder_sent_at = models.DateTimeField(blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -149,3 +150,32 @@ class PatientActivityCompletion(models.Model):
 
     def __str__(self) -> str:
         return f"{self.activity.title} - {self.occurrence_date}"
+
+
+class ReminderSetting(models.Model):
+    id = models.PositiveSmallIntegerField(primary_key=True, default=1, editable=False)
+    minutes_before = models.PositiveIntegerField(default=10)
+    updated_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        related_name="reminder_settings_updated",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+    )
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Reminder setting"
+        verbose_name_plural = "Reminder settings"
+
+    def __str__(self) -> str:
+        return f"Recordatorio {self.minutes_before} min"
+
+    @classmethod
+    def get_solo(cls):
+        setting, _created = cls.objects.get_or_create(id=1, defaults={"minutes_before": 10})
+        return setting
+
+    @classmethod
+    def get_minutes_before(cls) -> int:
+        return cls.get_solo().minutes_before
