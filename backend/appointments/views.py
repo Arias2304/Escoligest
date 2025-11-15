@@ -239,6 +239,12 @@ class PatientActivityViewSet(viewsets.ModelViewSet):
             except ValueError as exc:
                 raise ValidationError({"date": "Formato de fecha invalido (AAAA-MM-DD)."}) from exc
 
+            today = timezone.localdate()
+            if target_date > today:
+                raise ValidationError(
+                    {"date": "Solo puedes completar actividades del dia actual o anteriores."}
+                )
+
             if not self._occurs_on_date(activity, target_date):
                 raise ValidationError(
                     {"date": "La actividad no ocurre en la fecha indicada."}
@@ -260,6 +266,17 @@ class PatientActivityViewSet(viewsets.ModelViewSet):
         if user != activity.patient and user.role != "ADMIN":
             raise permissions.PermissionDenied(
                 "Solo el paciente puede completar la actividad."
+            )
+
+        activity_start = activity.start_time
+        activity_start_date = (
+            timezone.localtime(activity_start).date()
+            if timezone.is_aware(activity_start)
+            else activity_start.date()
+        )
+        if activity_start_date > timezone.localdate():
+            raise ValidationError(
+                {"detail": "No puedes completar una actividad programada en el futuro."}
             )
         if activity.status == "COMPLETED":
             return Response(
